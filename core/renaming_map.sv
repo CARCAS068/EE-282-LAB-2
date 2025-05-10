@@ -29,11 +29,27 @@ module renaming_map import ariane_pkg::*; #(
     localparam ARCH_NUM_REGS = 2**ARCH_REG_WIDTH;
     localparam PHYS_NUM_REGS = 2**PHYS_REG_WIDTH;
 
-    logic [PHYS_REG_WIDTH-1:0] rs1;
-    logic [PHYS_REG_WIDTH-1:0] rs2;
-    logic [PHYS_REG_WIDTH-1:0] rd;
+   // logic [PHYS_REG_WIDTH-1:0] rs1;
+    //logic [PHYS_REG_WIDTH-1:0] rs2;
+    //logic [PHYS_REG_WIDTH-1:0] rd;
+
+    
+
 
     // TODO: ADD STRUCTURES TO EXECUTE REGISTER RENAMING
+    // Maps architectural registers to physical registers
+    logic [PHYS_REG_WIDTH-1:0] rename_table [ARCH_NUM_REGS-1:0];
+
+    // Free list of physical registers (bitmask or queue)
+    logic [PHYS_NUM_REGS-1:0] free_list;
+
+    logic [PHYS_REG_WIDTH-1:0] new_pr;
+
+    issue_struct_t issue_q_r;
+
+    assign issue_q = issue_q_r;
+
+
 
     // Positive clock edge used for renaming new instructions
     always @(posedge clk_i, negedge rst_ni) begin
@@ -41,30 +57,67 @@ module renaming_map import ariane_pkg::*; #(
         if (~rst_ni) begin
 
             // TODO: ADD LOGIC TO RESET RENAMING STATE
+
+            // Reset: map x0 → p0, clear others
+            for (int i = 0; i < ARCH_NUM_REGS; ++i)
+                rename_table[i] = (i == 0) ? '0 : '0;
+
+            // Initialize free list: pr0 in use, rest free
+            free_list = '1;
+            free_list[0] = 1'b0;
+
+            issue_q_r = '0;
     
         // New incoming valid instruction to rename   
         end else if (fetch_entry_ready_i && issue_n.valid) begin
             // Get values of registers in new instruction
-            rs1 = issue_n.sbe.rs1[PHYS_REG_WIDTH-1:0];
-            rs2 = issue_n.sbe.rs2[PHYS_REG_WIDTH-1:0];
-            rd = issue_n.sbe.rd[PHYS_REG_WIDTH-1:0];
+
 
             // Set outgoing instruction to incoming instruction without
             // renaming by default. Keep this line since all fields of the 
             // incoming issue_struct_t should carry over to the output
             // except for the register values, which you may rename below
-            issue_q = issue_n;
+            issue_q_r = issue_n;
 
             // TODO: ADD LOGIC TO RENAME OUTGOING INSTRUCTION
             // The registers of the outgoing instruction issue_q can be set like so:
             // issue_q.sbe.rs1[PHYS_REG_WIDTH-1:0] = your new rs1 register value;
             // issue_q.sbe.rs2[PHYS_REG_WIDTH-1:0] = your new rs2 register value;
             // issue_q.sbe.rd[PHYS_REG_WIDTH-1:0] = your new rd register value;
-    
+             // Rename rs1
+            if (issue_n.sbe.rs1 == 0)
+                issue_q_r.sbe.rs1 = '0;
+            else
+                issue_q_r.sbe.rs1 = rename_table[issue_n.sbe.rs1];
+
+            // Rename rs2
+            if (issue_n.sbe.rs2 == 0)
+                issue_q_r.sbe.rs2 = '0;
+            else
+                issue_q_r.sbe.rs2 = rename_table[issue_n.sbe.rs2];
+            // Rename rd
+            if (issue_n.sbe.rd == 0) begin
+                issue_q_r.sbe.rd = '0;
+            end else begin
+                // Allocate a new physical register
+                new_pr = '0;
+                // Find a free physical register
+                for (int i = 1; i < PHYS_NUM_REGS; ++i) begin
+                    if (free_list[i]) begin
+                        new_pr = i[PHYS_REG_WIDTH-1:0];
+                        free_list[i] = 1'b0;
+                        break;
+                    end
+                end
+                issue_q_r.sbe.rd = new_pr;
+                rename_table[issue_n.sbe.rd] = new_pr;
+            end
+
+           
         // If there is no new instruction this clock cycle, simply pass on the
         // incoming instruction without renaming
         end else begin
-            issue_q = issue_n;
+            issue_q_r = issue_n;
         end
     end
     
@@ -77,8 +130,11 @@ module renaming_map import ariane_pkg::*; #(
             if (we_gp_i && waddr_i != 0) begin
         
                 // TODO: IMPLEMENT REGISTER DEALLOCATION LOGIC    
+                free_list[waddr_i]= 1'b1; 
+
 
             end
         end
     end
 endmodule
+
