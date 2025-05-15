@@ -1,5 +1,4 @@
 
-
 module renaming_map import ariane_pkg::*; #(
     parameter int unsigned ARCH_REG_WIDTH = 5,
     parameter int unsigned PHYS_REG_WIDTH = 6
@@ -32,7 +31,6 @@ module renaming_map import ariane_pkg::*; #(
     //logic [PHYS_REG_WIDTH-1:0] rs2;
     //logic [PHYS_REG_WIDTH-1:0] rd;
 
-    
 
 
     // TODO: ADD STRUCTURES TO EXECUTE REGISTER RENAMING
@@ -44,12 +42,14 @@ module renaming_map import ariane_pkg::*; #(
     logic [PHYS_NUM_REGS-1:0] deallocate_list ;
     // Free list of physical registers (bitmask or queue)
     logic [PHYS_NUM_REGS-1:0] free_list;
+    logic [PHYS_NUM_REGS-1:0] free_list_check;
     // 
     logic [PHYS_REG_WIDTH-1:0] new_pr;
 
     issue_struct_t issue_q_r;
 
     assign issue_q = issue_q_r;
+    
     //logic its_free;
 
     //free_list free_list_i (
@@ -59,17 +59,17 @@ module renaming_map import ariane_pkg::*; #(
     //);
 
 
-    always_comb begin
+    /*always_comb begin
         new_pr = '0;
         // Find a free physical register
         for (int i = 1; i < PHYS_NUM_REGS; ++i) begin
-            if (!free_list[i]) begin
+            if (!free_list_check[i]) begin
                 new_pr = i[PHYS_REG_WIDTH-1:0];
                 free_list[i] = 1'b1;
                 break;
             end
         end
-    end
+    end*/
 
     // Positive clock edge used for renaming new instructions
     always @(posedge clk_i, negedge rst_ni) begin
@@ -85,8 +85,8 @@ module renaming_map import ariane_pkg::*; #(
                 rename_table[i] <= '0;
             end
 
-            // Zero deallocate_list (array of packed vectors)
-            deallocate_list <= '0;
+            // Zero deallocate_list
+            deallocate_list <= 64'h0000000000000000;
             
 
   
@@ -119,10 +119,24 @@ module renaming_map import ariane_pkg::*; #(
             end
             
             if(issue_n.sbe.rd != 0) begin
-                
+
+                new_pr = '0;
+                // Find a free physical register
+                for (int i = 1; i < PHYS_NUM_REGS; ++i) begin
+                    if (!free_list[i]) begin
+                        new_pr = i[PHYS_REG_WIDTH-1:0];
+                        free_list[i] = 1'b1;
+                        break;
+                    end
+                end
+                $display("Free list: %b", free_list[new_pr]);
+                $display("New pr: %b", new_pr);
                 rename_table[issue_n.sbe.rd] <= new_pr;
-                issue_q_r.sbe.rd <= rename_table[issue_n.sbe.rd];
-                deallocate_list[issue_n.sbe.rd] <= 1'b1; 
+                issue_q_r.sbe.rd <= new_pr;
+
+
+                /// This is wrong i think, must check commiting address
+                //deallocate_list[issue_n.sbe.rd] <= 1'b1; 
   
             end else begin
                 issue_q_r.sbe.rd <= rename_table[issue_n.sbe.rd];
@@ -144,9 +158,9 @@ module renaming_map import ariane_pkg::*; #(
             if (we_gp_i && waddr_i != 0) begin
         
                 // TODO: IMPLEMENT REGISTER DEALLOCATION LOGIC  
-                deallocate_list[waddr_i] <= 1'b0;
+                //deallocate_list[waddr_i] <= 1'b0;
                 //rename_table[waddr_i] <= 1'b0;
-                free_list[waddr_i] <= 1'b0; 
+                //free_list[waddr_i] <= 1'b0; 
 
 
             end
@@ -154,10 +168,4 @@ module renaming_map import ariane_pkg::*; #(
     end
 endmodule
 
-
-
-            end
-        end
-    end
-endmodule
 
